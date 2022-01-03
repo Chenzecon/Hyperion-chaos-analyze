@@ -51,3 +51,60 @@
     [(> x pi) (- x (* 2 pi))]
     [(< x (- 0 pi)) (+ x (* 2 pi))]
     [else x]))
+
+; pos Func Func -> [List-of pos]
+; 从初始状态开始迭代得到一系列状态,并在结束条件满足时结束
+(define (record init-state nexter end?)
+  (let _ ([previous-states '()]
+          [curr-state init-state])
+    (if (end? curr-state)
+        (cons curr-state previous-states)
+        (_ (cons curr-state previous-states) (nexter curr-state)))))
+
+; pos -> vector
+; 从pos中抽取theta,t信息,组合成'#(theta,t)
+(define (theta-vs-t the-pos)
+  (vector (pos-t the-pos) (pos-theta the-pos)))
+
+; pos -> vector
+; 从pos中抽取omega,t信息,组合成'#(omega,t)
+(define (omega-vs-t the-pos)
+  (vector (pos-t the-pos) (pos-omega the-pos)))
+
+
+; Func [List-of pos] -> [List-of vector]
+; 根据向量模板从pos列表中抽取对应的数据,组合成矢量列表
+(define (extract vt-pattern states)
+  (let _ ([vts '()]
+          [sts states])
+    (if (empty? sts)
+        (reverse vts)
+        (_ (cons (vt-pattern (first sts)) vts) (rest sts)))))
+
+
+; Number -> Func
+; 返回函数,该函数读取byc,判断其中的时间是否大于t
+(define (stop-after t)
+  (lambda (x)
+    (> (pos-t x) t)))
+
+
+;产生画图所需要的点
+(define (Hyperion init-pos pattern)
+  (plot:points
+   (extract pattern
+            (record init-pos nexter (stop-after TIME)))
+   #:label "Hyperion"
+   #:y-min -3.5 #:y-max 3.5
+   #:size 1
+   ))
+
+(define init-pos (make-pos x0 0 0 vy0 0 0 0))
+;(plot:plot (plot:points
+;   (extract theta-vs-t
+;            (record init-pos nexter (stop-after TIME)))
+;   #:label "Hyperion θ versus time e=0.01"
+;   #:y-min -3.5 #:y-max 3.5
+;   #:size 1)
+;   #:x-label "time (yr)"
+;   #:y-label "θ (radians)")
