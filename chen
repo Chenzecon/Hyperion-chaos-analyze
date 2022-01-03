@@ -108,3 +108,73 @@
 ;   #:size 1)
 ;   #:x-label "time (yr)"
 ;   #:y-label "θ (radians)")
+
+;初始条件的影响---------------------------------------
+;找到Δθ
+;pos->[List-of t]
+(define (t pos)
+  (flatten (list (pos-t pos))))
+;pos->[List-of theta]
+(define (theta pos)
+  (flatten (list (pos-theta pos))))
+
+
+;pos pos-->list-of different-theta
+(define (difference-theta pos1 pos2)
+  (map (lambda (x1 x2)
+       (abs (- x1 x2)))
+       (flatten (extract theta pos1))
+       (flatten (extract theta pos2))))
+
+
+;list-different-theta ->list-sum
+(define (find-sum init-state )
+  (let _ ([previous-states '(0)]
+          [curr-state init-state]
+          )
+    (if (empty? curr-state)
+         (remove 0 (flatten (cons '() previous-states)))
+        (_ (cons (+ (first  curr-state) (first previous-states)) previous-states) (rest curr-state)))))
+
+;pos list-different-theta ->list-of Lyapunov
+(define (Lyapunov pos1 init-state)
+  (map (lambda (x1 x2) (/ x1 (+ x2 DT)))
+       (find-sum init-state )
+       (flatten (extract t pos1))))
+
+
+;list-pos list-pos->list-of [vect t deffenent-theta]
+(define (difference-vs-t pos1 pos2)
+  (map vector (flatten (extract t pos1)) (difference-theta pos1 pos2)))
+
+;pos list-different-theta->list-of [vect t Lyapunov]
+(define (Lyapunov-vs-t pos1 init-state)
+  (map vector (flatten (extract t pos1)) (Lyapunov pos1 init-state)))
+
+
+(define (different-theta init-pos1 init-pos2 )
+  (list
+   (plot:points
+   (difference-vs-t
+            (record init-pos1 nexter (stop-after TIME))
+            (record init-pos2 nexter (stop-after TIME)))
+   #:label "Δθ versus time e=0.3 Δθ=0.1"
+   #:y-max 50
+   #:size 1
+   )
+   (plot:points (Lyapunov-vs-t (record init-pos1 nexter (stop-after TIME)) (difference-theta
+            (record init-pos1 nexter (stop-after TIME))
+            (record init-pos2 nexter (stop-after TIME))))
+                #:size 1)))
+
+;作图Δθ--------------------------------------------
+;(define (init theta) (make-pos x0 0 0 vy0 theta 0 0))
+;(define theta1 0.3)
+;(define theta2 0.4)
+;(parameterize ([plot:plot-y-transform plot:log-transform]
+;               [plot:plot-y-ticks (plot:log-ticks)])
+;  (plot:plot (different-theta (init theta2) (init theta1))
+;             #:x-label "time (yr)"
+;             #:y-label "Δθ (radians)"
+;             ))
+
