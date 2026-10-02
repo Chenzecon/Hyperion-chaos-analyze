@@ -325,18 +325,61 @@ public class MainActivity extends Activity {
         }
         void send(DatagramSocket s,int len)throws Exception{byte[] d=new byte[Math.min(len,1500)];Arrays.fill(d,(byte)0);s.send(new DatagramPacket(d,d.length,broadcast,UDP_PORT));Thread.sleep(10);}
         void v2(){
+            MulticastSocket m=null;
             try{
-                InetAddress head=InetAddress.getByName("239.118.0.0");
-                MulticastSocket m=new MulticastSocket();
-                byte[] sync="abcdefghijklmnopqrst".getBytes(StandardCharsets.US_ASCII);
-                for(int z=0;z<5;z++){m.send(new DatagramPacket(sync,sync.length,head,randomPort()));Thread.sleep(10);}
-                byte[] d=new byte[2+ssid.length+key.length+2+userInfo.length];
-                d[0]=(byte)ssid.length;d[1]=(byte)key.length;
-                System.arraycopy(ssid,0,d,2,ssid.length);System.arraycopy(key,0,d,2+ssid.length,key.length);
-                int q=2+ssid.length+key.length;d[q]=(byte)userInfo.length;d[q+1]=0;System.arraycopy(userInfo,0,d,q+2,userInfo.length);
-                for(int k=0;k<d.length;k+=2){int a=d[k]&255,b=k+1<d.length?d[k+1]&255:0;InetAddress g=InetAddress.getByName("239.126."+a+"."+b);byte[] p=new byte[k/2+20];m.send(new DatagramPacket(p,p.length,g,randomPort()));Thread.sleep(10);}
-                m.close();
-            }catch(Exception e){log("EASYLINK_V2_EXCEPTION "+e);}
+                String head="239.118.0.0";
+                byte[] syncHBuffer="abcdefghijklmnopqrstuvw".getBytes(StandardCharsets.US_ASCII);
+                byte[] data=new byte[2+ssid.length+key.length];
+                data[0]=(byte)ssid.length;
+                data[1]=(byte)key.length;
+                System.arraycopy(ssid,0,data,2,ssid.length);
+                System.arraycopy(key,0,data,2+ssid.length,key.length);
+
+                m=new MulticastSocket(54064);
+                InetAddress headAddr=InetAddress.getByName(head);
+                m.joinGroup(headAddr);
+                for(int z=0;z<5;z++){
+                    byte[] sync=Arrays.copyOf(syncHBuffer,20);
+                    m.send(new DatagramPacket(sync,20,headAddr,randomPort()));
+                    Thread.sleep(10);
+                }
+
+                int userLength=userInfo.length;
+                ByteArrayOutputStream d=new ByteArrayOutputStream();
+                d.write(data);
+                if(data.length%2==0){
+                    if(userInfo.length==0){
+                        d.write((byte)userLength);
+                        d.write(0);
+                        d.write(0);
+                    }else{
+                        d.write((byte)userLength);
+                        d.write(0);
+                    }
+                }else{
+                    d.write(0);
+                    d.write((byte)userLength);
+                    d.write(0);
+                }
+                d.write(userInfo);
+                byte[] all=d.toByteArray();
+
+                for(int k=0;k<all.length;k+=2){
+                    int b0=all[k]&255;
+                    int b1=(k+1<all.length)?(all[k+1]&255):0;
+                    String ip="239.126."+b0+"."+b1;
+                    InetAddress group=InetAddress.getByName(ip);
+                    byte[] payload=new byte[k/2+20];
+                    m.joinGroup(group);
+                    m.send(new DatagramPacket(payload,payload.length,group,randomPort()));
+                    Thread.sleep(10);
+                }
+                log("EASYLINK_V2_SENT bytes="+all.length+" sourcePort=54064");
+            }catch(Exception e){
+                log("EASYLINK_V2_EXCEPTION "+e);
+            }finally{
+                if(m!=null)m.close();
+            }
         }
         int randomPort(){int n=new Random().nextInt(65536);return n<10000?65523:n;}
         byte[] hexStringToBytes(String s){byte[] r=new byte[s.length()/2];for(int i=0;i<r.length;i++)r[i]=(byte)Integer.parseInt(s.substring(i*2,i*2+2),16);return r;}
