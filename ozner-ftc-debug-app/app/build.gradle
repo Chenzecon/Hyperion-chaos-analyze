@@ -1,0 +1,28 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.chenzecon.oznerftcdebug'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.chenzecon.oznerftcdebug'
+        minSdk 19
+        targetSdk 28
+        versionCode 1
+        versionName '1.0-debug'
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
