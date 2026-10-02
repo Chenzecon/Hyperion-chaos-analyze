@@ -315,11 +315,15 @@ public class MainActivity extends Activity {
             try(DatagramSocket s=new DatagramSocket()){
                 s.setBroadcast(true);
                 send(s,0x5AA);send(s,0x5AB);send(s,0x5AC);
-                int k=0,j=1;
-                for(int i=0;i<(sendData[0]&255);i++,j++){
-                    send(s,j*256+(sendData[i]&255));
-                    if(i%4==3){k++;send(s,1280+k);}
-                    if(j==4)j=1;
+                int k=0, j=1;
+                for(int i=0; i<(sendData[0]&255); i++){
+                    send(s, j*256+(sendData[i]&255));
+                    if(i%4==3){
+                        k++;
+                        send(s,1280+k);
+                    }
+                    j++;
+                    if(j==5) j=1;
                 }
             }catch(Exception e){log("EASYLINK_V3_EXCEPTION "+e);}
         }
