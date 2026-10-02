@@ -16,8 +16,8 @@ jobs:
       - name: Build
         working-directory: ozner-ftc-debug-app
         run: |
-          gradle wrapper --gradle-version 8.9
-          ./gradlew assembleDebug
+          gradle --version
+          gradle --no-daemon assembleDebug --stacktrace
       - name: Verify APK
         working-directory: ozner-ftc-debug-app
         run: |
