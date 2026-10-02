@@ -295,7 +295,11 @@ public class MainActivity extends Activity {
         final byte[] ssid,key,userInfo,sendData; final int localIp; final InetAddress broadcast;
         EasyLink(String s,String p,int ip)throws Exception{
             ssid=s.getBytes(StandardCharsets.UTF_8); key=p.getBytes(StandardCharsets.UTF_8); localIp=ip;
-            userInfo=new byte[]{0x23,(byte)(ip&255),(byte)((ip>>>8)&255),(byte)((ip>>>16)&255),(byte)((ip>>>24)&255)};
+            String strIp=String.format(Locale.US,"%08x",ip);
+            byte[] ipBytes=hexStringToBytes(strIp);
+            userInfo=new byte[5];
+            userInfo[0]=0x23;
+            System.arraycopy(ipBytes,0,userInfo,1,4);
             broadcast=InetAddress.getByName(((ip&255))+"."+((ip>>>8)&255)+"."+((ip>>>16)&255)+".255");
             int total=3+ssid.length+key.length+userInfo.length+2;
             if(total>127) throw new IOException("EasyLink payload too large: "+total);
@@ -335,5 +339,6 @@ public class MainActivity extends Activity {
             }catch(Exception e){log("EASYLINK_V2_EXCEPTION "+e);}
         }
         int randomPort(){int n=new Random().nextInt(65536);return n<10000?65523:n;}
+        byte[] hexStringToBytes(String s){byte[] r=new byte[s.length()/2];for(int i=0;i<r.length;i++)r[i]=(byte)Integer.parseInt(s.substring(i*2,i*2+2),16);return r;}
     }
 }
