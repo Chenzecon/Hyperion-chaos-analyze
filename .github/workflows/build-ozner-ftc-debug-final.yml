@@ -1,0 +1,29 @@
+name: Build Ozner FTC Debug APK Final
+on:
+  push:
+    branches:
+      - ozner-ftc-debug-20261002
+  workflow_dispatch:
+jobs:
+  build-final:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build final APK
+        working-directory: ozner-ftc-debug-app
+        run: |
+          gradle wrapper --gradle-version 8.9
+          ./gradlew --no-daemon assembleDebug --stacktrace
+      - name: Verify final APK
+        working-directory: ozner-ftc-debug-app
+        run: |
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | head -20
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OznerFTC-debug-final-apk
+          path: ozner-ftc-debug-app/app/build/outputs/apk/debug/app-debug.apk
