@@ -4,6 +4,9 @@ on:
     branches:
       - ozner-ftc-debug-20261002
   workflow_dispatch:
+concurrency:
+  group: ozner-ftc-debug-build
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
