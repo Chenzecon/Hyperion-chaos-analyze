@@ -114,7 +114,7 @@ public class MainActivity extends Activity {
             final String s = i == null ? "unknown" : i.getSSID();
             final String ip = i == null ? "0.0.0.0" : ip(i.getIpAddress());
             log("NETWORK wifiIp=" + ip + " ssid=" + s);
-            runOnUiThread(() -> { if (i != null && s != null && s.length()>0 && !"<unknown ssid>".equals(s)) ssid.setText(s.replace(""","")); });
+            runOnUiThread(() -> { if (i != null && s != null && s.length()>0 && !"<unknown ssid>".equals(s)) ssid.setText(s.replace("\"", "")); });
         });
     }
 
@@ -280,7 +280,7 @@ public class MainActivity extends Activity {
             return -1;
         }
         int headerEnd(byte[] b) {
-            for(int i=0;i+3<b.length;i++) if(b[i]=='\\r'&&b[i+1]=='\\n'&&b[i+2]=='\\r'&&b[i+3]=='\\n') return i;
+            for(int i=0;i+3<b.length;i++) if(b[i]=='\r'&&b[i+1]=='\n'&&b[i+2]=='\r'&&b[i+3]=='\n') return i;
             return -1;
         }
         String oneLine(String s) { return s.replace("\r","\\r").replace("\n","\\n"); }
