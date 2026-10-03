@@ -35,6 +35,9 @@ public class MainActivity extends Activity {
     private NsdManager nsdManager;
     private final List<NsdManager.DiscoveryListener> mdnsListeners = new ArrayList<NsdManager.DiscoveryListener>();
     private File logFile, lastJson;
+    private volatile String discoveredDeviceIp = "";
+    private volatile int discoveredMdnsPort = 0;
+    private volatile String discoveredDeviceMac = "";
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -104,6 +107,37 @@ public class MainActivity extends Activity {
         mdnsRow.addView(mdnsStop, new LinearLayout.LayoutParams(0,-2,1));
         root.addView(mdnsRow);
 
+        TextView deviceHint = new TextView(this);
+        deviceHint.setText("设备 HTTP 测试（自动探测 8000/8002；激活仅手动）");
+        deviceHint.setPadding(0,8,0,4);
+        root.addView(deviceHint);
+
+        LinearLayout deviceRow1 = new LinearLayout(this);
+        EditText deviceIp = new EditText(this); deviceIp.setHint("设备 IP，例如 192.168.5.42");
+        deviceIp.setSingleLine(true);
+        EditText devicePort = new EditText(this); devicePort.setHint("端口"); devicePort.setSingleLine(true);
+        devicePort.setText("8000");
+        devicePort.setInputType(InputType.TYPE_CLASS_NUMBER);
+        deviceRow1.addView(deviceIp, new LinearLayout.LayoutParams(0,-2,2));
+        deviceRow1.addView(devicePort, new LinearLayout.LayoutParams(0,-2,1));
+        root.addView(deviceRow1);
+
+        LinearLayout deviceRow2 = new LinearLayout(this);
+        Button httpGet = new Button(this); httpGet.setText("GET /");
+        Button activate = new Button(this); activate.setText("POST /dev-activate");
+        Button authorize = new Button(this); authorize.setText("POST /dev-authorize");
+        deviceRow2.addView(httpGet, new LinearLayout.LayoutParams(0,-2,1));
+        deviceRow2.addView(activate, new LinearLayout.LayoutParams(0,-2,1));
+        deviceRow2.addView(authorize, new LinearLayout.LayoutParams(0,-2,1));
+        root.addView(deviceRow2);
+
+        LinearLayout credentialRow = new LinearLayout(this);
+        EditText loginId = new EditText(this); loginId.setHint("login_id"); loginId.setSingleLine(true); loginId.setText("admin");
+        EditText devPasswd = new EditText(this); devPasswd.setHint("dev_passwd"); devPasswd.setSingleLine(true); devPasswd.setText("12345678");
+        credentialRow.addView(loginId, new LinearLayout.LayoutParams(0,-2,1));
+        credentialRow.addView(devPasswd, new LinearLayout.LayoutParams(0,-2,1));
+        root.addView(credentialRow);
+
         Button path = new Button(this); path.setText("显示日志文件路径");
         root.addView(path);
 
@@ -119,6 +153,9 @@ public class MainActivity extends Activity {
         stop.setOnClickListener(v -> stopAll());
         mdns.setOnClickListener(v -> startMdnsScan());
         mdnsStop.setOnClickListener(v -> stopMdnsScan());
+        httpGet.setOnClickListener(v -> manualHttpGet(deviceIp.getText().toString().trim(), devicePort.getText().toString().trim()));
+        activate.setOnClickListener(v -> manualDevicePost(deviceIp.getText().toString().trim(), devicePort.getText().toString().trim(), "/dev-activate", loginId.getText().toString().trim(), devPasswd.getText().toString()));
+        authorize.setOnClickListener(v -> manualDevicePost(deviceIp.getText().toString().trim(), devicePort.getText().toString().trim(), "/dev-authorize", loginId.getText().toString().trim(), devPasswd.getText().toString()));
         path.setOnClickListener(v -> {
             log("LOG_PATH " + logFile.getAbsolutePath());
             log("LAST_JSON_PATH " + lastJson.getAbsolutePath());
@@ -244,9 +281,19 @@ public class MainActivity extends Activity {
                         @Override public void onServiceResolved(NsdServiceInfo si){
                             String host=si.getHost()==null?"null":si.getHost().getHostAddress();
                             String attrsText=decodeMdnsAttributes(si.getAttributes());
-                            log("MDNS_RESOLVED type="+type+" name="+si.getServiceName()+" host="+host+" port="+si.getPort()+" attrs="+attrsText);
-                            if (host != null && !"null".equals(host) && si.getPort() > 0) {
-                                probeTcpService(type, si.getServiceName(), host, si.getPort(), si.getAttributes());
+                            discoveredDeviceIp = host;
+                            discoveredMdnsPort = si.getPort();
+                            discoveredDeviceMac = extractTxtValue(si.getAttributes(), "MAC");
+                            log("MDNS_RESOLVED type="+type+" name="+si.getServiceName()+" host="+host+" port="+si.getPort()+" mac="+discoveredDeviceMac+" attrs="+attrsText);
+                            if (host != null && !"null".equals(host)) {
+                                runOnUiThread(() -> {
+                                    deviceIp.setText(host);
+                                    devicePort.setText("8000");
+                                });
+                                probeTcpService(type, si.getServiceName(), host, 8000, si.getAttributes());
+                                if (si.getPort() > 0 && si.getPort() != 8000) {
+                                    probeTcpService(type, si.getServiceName(), host, si.getPort(), si.getAttributes());
+                                }
                             }
                         }
                     });
@@ -262,6 +309,18 @@ public class MainActivity extends Activity {
         };
         mdnsListeners.add(listener);
         nsdManager.discoverServices(type,NsdManager.PROTOCOL_DNS_SD,listener);
+    }
+
+    private String extractTxtValue(Map<String, byte[]> attrs, String wantedKey) {
+        if (attrs == null || wantedKey == null) return "";
+        for (Map.Entry<String, byte[]> e : attrs.entrySet()) {
+            if (wantedKey.equalsIgnoreCase(e.getKey())) {
+                byte[] b = e.getValue();
+                if (b == null) return "";
+                return new String(b, StandardCharsets.UTF_8);
+            }
+        }
+        return "";
     }
 
     private String decodeMdnsAttributes(Map<String, byte[]> attrs) {
@@ -298,13 +357,110 @@ public class MainActivity extends Activity {
         return s.replace("\\", "\\\\").replace("\r", "\\\\r").replace("\n", "\\\\n");
     }
 
+    private void manualHttpGet(String host, String portText) {
+        final String h = host;
+        final int p;
+        try { p = Integer.parseInt(portText); } catch (Exception e) {
+            log("MANUAL_GET_INVALID_PORT " + portText);
+            return;
+        }
+        if (h.length() == 0 || p <= 0 || p > 65535) {
+            log("MANUAL_GET_INVALID_TARGET " + h + ":" + p);
+            return;
+        }
+        executor.execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                URL u = new URL("http://" + h + ":" + p + "/");
+                log("MANUAL_GET_START url=" + u);
+                conn = (HttpURLConnection) u.openConnection();
+                conn.setConnectTimeout(4000);
+                conn.setReadTimeout(5000);
+                conn.setRequestMethod("GET");
+                conn.setRequestProperty("User-Agent", "OznerFTC-Debug/1.2");
+                int code = conn.getResponseCode();
+                InputStream in = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
+                byte[] body = readAtMost(in, 16384);
+                log("MANUAL_GET_RESPONSE code=" + code + " message=" + conn.getResponseMessage() + " bytes=" + body.length
+                        + " text=" + escapeOneLine(new String(body, StandardCharsets.UTF_8)));
+            } catch (Throwable t) {
+                log("MANUAL_GET_EXCEPTION url=http://" + h + ":" + p + "/ " + t);
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        });
+    }
+
+    private void manualDevicePost(String host, String portText, String path, String login, String passwd) {
+        final String h = host;
+        final int p;
+        try { p = Integer.parseInt(portText); } catch (Exception e) {
+            log("MANUAL_POST_INVALID_PORT " + portText);
+            return;
+        }
+        if (h.length() == 0 || p <= 0 || p > 65535) {
+            log("MANUAL_POST_INVALID_TARGET " + h + ":" + p + path);
+            return;
+        }
+        executor.execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                URL u = new URL("http://" + h + ":" + p + path);
+                String json = "{\"login_id\":\"" + jsonEscape(login) + "\",\"dev_passwd\":\"" + jsonEscape(passwd)
+                        + "\",\"user_token\":\"" + System.currentTimeMillis() + "\"}";
+                log("MANUAL_POST_START url=" + u + " body=" + json);
+                conn = (HttpURLConnection) u.openConnection();
+                conn.setConnectTimeout(4000);
+                conn.setReadTimeout(6000);
+                conn.setRequestMethod("POST");
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Accept", "application/json");
+                byte[] data = json.getBytes(StandardCharsets.UTF_8);
+                conn.setFixedLengthStreamingMode(data.length);
+                OutputStream out = conn.getOutputStream();
+                out.write(data);
+                out.flush();
+                out.close();
+                int code = conn.getResponseCode();
+                InputStream in = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
+                byte[] body = readAtMost(in, 16384);
+                log("MANUAL_POST_RESPONSE path=" + path + " code=" + code + " message=" + conn.getResponseMessage()
+                        + " bytes=" + body.length + " text=" + escapeOneLine(new String(body, StandardCharsets.UTF_8)));
+            } catch (Throwable t) {
+                log("MANUAL_POST_EXCEPTION url=http://" + h + ":" + p + path + " " + t);
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        });
+    }
+
+    private byte[] readAtMost(InputStream in, int max) throws IOException {
+        if (in == null) return new byte[0];
+        try (InputStream x = in; ByteArrayOutputStream b = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[4096];
+            int total = 0, n;
+            while (total < max && (n = x.read(buf, 0, Math.min(buf.length, max-total))) > 0) {
+                b.write(buf, 0, n);
+                total += n;
+            }
+            return b.toByteArray();
+        }
+    }
+
+    private String jsonEscape(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
     private void probeTcpService(String type, String serviceName, String host, int port, Map<String, byte[]> attrs) {
         executor.execute(() -> {
             Socket socket = new Socket();
             File rawFile = new File(logFile.getParentFile(),
                     "tcp_" + host.replace('.', '_') + "_" + port + "_" + System.currentTimeMillis() + ".bin");
             try {
-                log("TCP_PROBE_START type=" + type + " name=" + serviceName + " dst=" + host + ":" + port);
+                log("TCP_PROBE_START type=" + type + " name=" + serviceName + " dst=" + host + ":" + port
+                        + (port == 8000 ? " role=LEGACY_FTC_OR_ACTIVATE_CANDIDATE" : " role=MDNS_SERVICE_PORT"));
                 socket.setReuseAddress(true);
                 socket.connect(new InetSocketAddress(host, port), 3000);
                 socket.setSoTimeout(1800);
