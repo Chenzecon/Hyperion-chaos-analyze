@@ -97,6 +97,13 @@ public class MainActivity extends Activity {
         row.addView(stop, new LinearLayout.LayoutParams(0,-2,1));
         root.addView(row);
 
+        LinearLayout mdnsRow = new LinearLayout(this);
+        Button mdns = new Button(this); mdns.setText("扫描 mDNS");
+        Button mdnsStop = new Button(this); mdnsStop.setText("停止 mDNS");
+        mdnsRow.addView(mdns, new LinearLayout.LayoutParams(0,-2,1));
+        mdnsRow.addView(mdnsStop, new LinearLayout.LayoutParams(0,-2,1));
+        root.addView(mdnsRow);
+
         Button path = new Button(this); path.setText("显示日志文件路径");
         root.addView(path);
 
@@ -110,6 +117,8 @@ public class MainActivity extends Activity {
         listen.setOnClickListener(v -> startFtc());
         test.setOnClickListener(v -> startTest());
         stop.setOnClickListener(v -> stopAll());
+        mdns.setOnClickListener(v -> startMdnsScan());
+        mdnsStop.setOnClickListener(v -> stopMdnsScan());
         path.setOnClickListener(v -> {
             log("LOG_PATH " + logFile.getAbsolutePath());
             log("LAST_JSON_PATH " + lastJson.getAbsolutePath());
@@ -189,7 +198,8 @@ public class MainActivity extends Activity {
                     Thread.sleep(100);
                 }
                 log("EASYLINK_TEST_FINISHED");
-                ui("测试结束，FTC继续监听");
+                ui("测试结束，FTC继续监听，自动扫描 mDNS");
+                startMdnsScan();
             } catch (Throwable t) {
                 log("TEST_EXCEPTION " + t);
                 ui("测试异常");
@@ -203,6 +213,61 @@ public class MainActivity extends Activity {
         server = null;
         ui("已停止");
         log("STOP_ALL");
+    }
+
+    private void startMdnsScan() {
+        try {
+            stopMdnsScan();
+            nsdManager=(NsdManager)getSystemService(Context.NSD_SERVICE);
+            if(nsdManager==null){log("MDNS_MANAGER_NULL");return;}
+            acquireMulticastLock();
+            discoverMdnsType("_easylink._tcp.");
+            discoverMdnsType("_http._tcp.");
+            log("MDNS_SCAN_START types=_easylink._tcp.,_http._tcp.");
+            ui("正在扫描 mDNS");
+        } catch(Throwable t) {
+            log("MDNS_START_EXCEPTION "+t);
+        }
+    }
+
+    private void discoverMdnsType(final String type) {
+        if(nsdManager==null)return;
+        final NsdManager.DiscoveryListener listener=new NsdManager.DiscoveryListener(){
+            @Override public void onDiscoveryStarted(String serviceType){log("MDNS_DISCOVERY_STARTED type="+serviceType);}
+            @Override public void onServiceFound(NsdServiceInfo serviceInfo){
+                log("MDNS_SERVICE_FOUND type="+type+" name="+serviceInfo.getServiceName()+" info="+serviceInfo);
+                try{
+                    nsdManager.resolveService(serviceInfo,new NsdManager.ResolveListener(){
+                        @Override public void onResolveFailed(NsdServiceInfo si,int errorCode){
+                            log("MDNS_RESOLVE_FAILED type="+type+" name="+si.getServiceName()+" code="+errorCode);
+                        }
+                        @Override public void onServiceResolved(NsdServiceInfo si){
+                            String host=si.getHost()==null?"null":si.getHost().getHostAddress();
+                            log("MDNS_RESOLVED type="+type+" name="+si.getServiceName()+" host="+host+" port="+si.getPort()+" attrs="+si.getAttributes());
+                        }
+                    });
+                }catch(Throwable t){log("MDNS_RESOLVE_EXCEPTION type="+type+" "+t);}
+            }
+            @Override public void onServiceLost(NsdServiceInfo serviceInfo){log("MDNS_SERVICE_LOST type="+type+" name="+serviceInfo.getServiceName());}
+            @Override public void onDiscoveryStopped(String serviceType){log("MDNS_DISCOVERY_STOPPED type="+serviceType);}
+            @Override public void onStartDiscoveryFailed(String serviceType,int errorCode){
+                log("MDNS_DISCOVERY_START_FAILED type="+serviceType+" code="+errorCode);
+                try{nsdManager.stopServiceDiscovery(this);}catch(Throwable ignored){}
+            }
+            @Override public void onStopDiscoveryFailed(String serviceType,int errorCode){log("MDNS_DISCOVERY_STOP_FAILED type="+serviceType+" code="+errorCode);}
+        };
+        mdnsListeners.add(listener);
+        nsdManager.discoverServices(type,NsdManager.PROTOCOL_DNS_SD,listener);
+    }
+
+    private void stopMdnsScan() {
+        if(nsdManager!=null){
+            for(NsdManager.DiscoveryListener l: new ArrayList<NsdManager.DiscoveryListener>(mdnsListeners)){
+                try{nsdManager.stopServiceDiscovery(l);}catch(Throwable ignored){}
+            }
+        }
+        mdnsListeners.clear();
+        log("MDNS_SCAN_STOP");
     }
 
     private void acquireMulticastLock() {
