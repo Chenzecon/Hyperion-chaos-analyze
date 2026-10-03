@@ -318,14 +318,14 @@ public class MainActivity extends Activity {
                     int n = in.read(buf);
                     if (n > 0) {
                         pre.write(buf, 0, n);
-                        log("TCP_PRE_READ bytes=" + n + " hex=" + hex(buf, n) + " text=" + escapeOneLine(new String(buf, 0, n, StandardCharsets.UTF_8))));
+                        log("TCP_PRE_READ bytes=" + n + " hex=" + hex(buf, n) + " text=" + escapeOneLine(new String(buf, 0, n, StandardCharsets.UTF_8)));
                     }
                 } catch (SocketTimeoutException e) {
                     log("TCP_PRE_READ_TIMEOUT");
                 }
 
-                String req = "GET / HTTP/1.1\\r\\nHost: " + host + ":" + port
-                        + "\\r\\nConnection: close\\r\\nUser-Agent: OznerFTC-Debug/1.1\\r\\n\\r\\n";
+                String req = "GET / HTTP/1.1\r\nHost: " + host + ":" + port
+                        + "\r\nConnection: close\r\nUser-Agent: OznerFTC-Debug/1.1\r\n\r\n";
                 OutputStream out = socket.getOutputStream();
                 out.write(req.getBytes(StandardCharsets.US_ASCII));
                 out.flush();
@@ -354,7 +354,7 @@ public class MainActivity extends Activity {
                 if (result.length > 0) {
                     int show = Math.min(result.length, 8192);
                     log("TCP_RAW_HEX bytes=" + result.length + " hex=" + hex(result, show));
-                    log("TCP_RAW_TEXT text=" + escapeOneLine(new String(result, 0, show, StandardCharsets.UTF_8))));
+                    log("TCP_RAW_TEXT text=" + escapeOneLine(new String(result, 0, show, StandardCharsets.UTF_8)));
                 } else {
                     log("TCP_NO_RESPONSE");
                 }
