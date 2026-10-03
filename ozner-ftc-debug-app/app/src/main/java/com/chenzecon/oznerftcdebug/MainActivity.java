@@ -25,7 +25,7 @@ public class MainActivity extends Activity {
     private final Object logLock = new Object();
 
     private TextView status, logView;
-    private EditText ssid, password;
+    private EditText ssid, password, callbackIp;
     private CheckBox sendV2;
     private ScrollView scroll;
     private FtcServer server;
@@ -74,6 +74,11 @@ public class MainActivity extends Activity {
         password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         root.addView(password);
 
+        callbackIp = new EditText(this);
+        callbackIp.setHint("FTC 回连 IP（默认手机 IP）");
+        callbackIp.setSingleLine(true);
+        root.addView(callbackIp);
+
         sendV2 = new CheckBox(this);
         sendV2.setText("同时发送 EasyLink V2");
         sendV2.setChecked(true);
@@ -115,13 +120,26 @@ public class MainActivity extends Activity {
             final String s = i == null ? "unknown" : i.getSSID();
             final String ip = i == null ? "0.0.0.0" : ip(i.getIpAddress());
             log("NETWORK wifiIp=" + ip + " ssid=" + s);
-            runOnUiThread(() -> { if (i != null && s != null && s.length()>0 && !"<unknown ssid>".equals(s)) ssid.setText(s.replace("\"", "")); });
+            runOnUiThread(() -> {
+                if (i != null && s != null && s.length()>0 && !"<unknown ssid>".equals(s)) ssid.setText(s.replace("\"", ""));
+                if (callbackIp != null && !"0.0.0.0".equals(ip)) callbackIp.setText(ip);
+            });
         });
     }
 
     private int wifiIp() {
         WifiInfo i = ((WifiManager)getApplicationContext().getSystemService(Context.WIFI_SERVICE)).getConnectionInfo();
         return i == null ? 0 : i.getIpAddress();
+    }
+
+    private static int parseIpv4(String s) {
+        try {
+            String[] a=s.split("\\.");
+            if(a.length!=4)return 0;
+            int b0=Integer.parseInt(a[0]),b1=Integer.parseInt(a[1]),b2=Integer.parseInt(a[2]),b3=Integer.parseInt(a[3]);
+            if((b0|b1|b2|b3)<0||b0>255||b1>255||b2>255||b3>255)return 0;
+            return b0|(b1<<8)|(b2<<16)|(b3<<24);
+        }catch(Exception e){return 0;}
     }
 
     private static String ip(int x) {
@@ -145,7 +163,13 @@ public class MainActivity extends Activity {
                 if (s.length()==0) { log("ERROR SSID_EMPTY"); return; }
                 int local = wifiIp();
                 if (local==0) { log("ERROR WIFI_IP_EMPTY"); return; }
-                EasyLink sender = new EasyLink(s,p,local);
+                String cbText=callbackIp.getText().toString().trim();
+                int callback=local;
+                if (cbText.length()>0) {
+                    callback=parseIpv4(cbText);
+                    if(callback==0){ log("ERROR FTC_CALLBACK_IP_INVALID " + cbText); return; }
+                }
+                EasyLink sender = new EasyLink(s,p,local,callback);
                 log("EASYLINK_CONFIG " + sender.describe());
                 long end = System.currentTimeMillis()+30000;
                 int round=0;
@@ -319,10 +343,10 @@ public class MainActivity extends Activity {
     private static String hex(byte[] b){StringBuilder s=new StringBuilder();for(byte x:b)s.append(String.format(Locale.US,"%02X",x&255));return s.toString();}
 
     private class EasyLink {
-        final byte[] ssid,key,userInfo,sendData; final int localIp; final InetAddress broadcast;
-        EasyLink(String s,String p,int ip)throws Exception{
-            ssid=s.getBytes(StandardCharsets.UTF_8); key=p.getBytes(StandardCharsets.UTF_8); localIp=ip;
-            String strIp=String.format(Locale.US,"%08x",ip);
+        final byte[] ssid,key,userInfo,sendData; final int localIp, callbackIpValue; final InetAddress broadcast;
+        EasyLink(String s,String p,int ip,int callbackIp)throws Exception{
+            ssid=s.getBytes(StandardCharsets.UTF_8); key=p.getBytes(StandardCharsets.UTF_8); localIp=ip; callbackIpValue=callbackIp;
+            String strIp=String.format(Locale.US,"%08x",callbackIp);
             byte[] ipBytes=hexStringToBytes(strIp);
             userInfo=new byte[5];
             userInfo[0]=0x23;
@@ -337,7 +361,7 @@ public class MainActivity extends Activity {
             int sum=0;for(int j=0;j<i;j++)sum=(sum+(sendData[j]&255))&65535;
             sendData[i++]=(byte)(sum>>>8);sendData[i]=(byte)sum;
         }
-        String describe(){return "wifiIp="+ip(localIp)+" broadcast="+broadcast.getHostAddress()+" userInfo="+hex(userInfo)+" v3Len="+(sendData[0]&255);}
+        String describe(){return "wifiIp="+ip(localIp)+" broadcast="+broadcast.getHostAddress()+" ftcIp="+ip(callbackIpValue)+" userInfo="+hex(userInfo)+" v3Len="+(sendData[0]&255)+";}
         void v3(){
             try {
                 InetAddress localAddress=InetAddress.getByName(ip(localIp));
