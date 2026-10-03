@@ -318,7 +318,7 @@ public class MainActivity extends Activity {
                     int n = in.read(buf);
                     if (n > 0) {
                         pre.write(buf, 0, n);
-                        log("TCP_PRE_READ bytes=" + n + " hex=" + hex(buf, n) + " text=" + oneLine(new String(buf, 0, n, StandardCharsets.UTF_8)));
+                        log("TCP_PRE_READ bytes=" + n + " hex=" + hex(buf, n) + " text=" + oneLine(escapeOneLine(new String(buf, 0, n, StandardCharsets.UTF_8))));
                     }
                 } catch (SocketTimeoutException e) {
                     log("TCP_PRE_READ_TIMEOUT");
@@ -349,12 +349,12 @@ public class MainActivity extends Activity {
                 }
 
                 byte[] result = all.toByteArray();
-                writeFile(rawFile, result);
+                writeBytesFile(rawFile, result);
                 log("TCP_RAW_SAVED path=" + rawFile.getName() + " bytes=" + result.length);
                 if (result.length > 0) {
                     int show = Math.min(result.length, 8192);
                     log("TCP_RAW_HEX bytes=" + result.length + " hex=" + hex(result, show));
-                    log("TCP_RAW_TEXT text=" + oneLine(new String(result, 0, show, StandardCharsets.UTF_8)));
+                    log("TCP_RAW_TEXT text=" + oneLine(escapeOneLine(new String(result, 0, show, StandardCharsets.UTF_8))));
                 } else {
                     log("TCP_NO_RESPONSE");
                 }
@@ -373,6 +373,10 @@ public class MainActivity extends Activity {
         StringBuilder s = new StringBuilder(n * 2);
         for (int i = 0; i < n; i++) s.append(String.format(Locale.US, "%02X", b[i] & 255));
         return s.toString();
+    }
+
+    private void writeBytesFile(File f, byte[] b) throws IOException {
+        try (FileOutputStream o = new FileOutputStream(f)) { o.write(b); }
     }
 
     private void stopMdnsScan() {
