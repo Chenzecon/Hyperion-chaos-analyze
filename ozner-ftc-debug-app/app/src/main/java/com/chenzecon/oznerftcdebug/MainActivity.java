@@ -29,6 +29,7 @@ public class MainActivity extends Activity {
     private CheckBox sendV2;
     private ScrollView scroll;
     private FtcServer server;
+    private WifiManager.MulticastLock multicastLock;
     private File logFile, lastJson;
 
     @Override public void onCreate(Bundle b) {
@@ -134,6 +135,7 @@ public class MainActivity extends Activity {
     }
 
     private void startTest() {
+        acquireMulticastLock();
         startFtc();
         executor.execute(() -> {
             try {
@@ -168,10 +170,35 @@ public class MainActivity extends Activity {
     }
 
     private void stopAll() {
+        releaseMulticastLock();
         if (server != null) server.stop();
         server = null;
         ui("已停止");
         log("STOP_ALL");
+    }
+
+    private void acquireMulticastLock() {
+        try {
+            WifiManager wm=(WifiManager)getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null) {
+                multicastLock=wm.createMulticastLock("OznerFTCDebug");
+                multicastLock.setReferenceCounted(false);
+                multicastLock.acquire();
+                log("WIFI_MULTICAST_LOCK acquired");
+            }
+        } catch(Throwable t) {
+            log("WIFI_MULTICAST_LOCK_EXCEPTION " + t);
+        }
+    }
+
+    private void releaseMulticastLock() {
+        try {
+            if (multicastLock != null && multicastLock.isHeld()) multicastLock.release();
+            multicastLock=null;
+            log("WIFI_MULTICAST_LOCK released");
+        } catch(Throwable t) {
+            log("WIFI_MULTICAST_UNLOCK_EXCEPTION " + t);
+        }
     }
 
     private void ui(String s) { runOnUiThread(() -> status.setText("状态：" + s)); }
@@ -312,22 +339,41 @@ public class MainActivity extends Activity {
         }
         String describe(){return "wifiIp="+ip(localIp)+" broadcast="+broadcast.getHostAddress()+" userInfo="+hex(userInfo)+" v3Len="+(sendData[0]&255);}
         void v3(){
-            try(DatagramSocket s=new DatagramSocket()){
+            try {
+                InetAddress localAddress=InetAddress.getByName(ip(localIp));
+                DatagramSocket s=new DatagramSocket(null);
+                s.setReuseAddress(true);
+                s.bind(new InetSocketAddress(localAddress,0));
                 s.setBroadcast(true);
-                send(s,0x5AA);send(s,0x5AB);send(s,0x5AC);
+                log("V3_SOCKET local="+s.getLocalSocketAddress()+" dst="+broadcast.getHostAddress()+":"+UDP_PORT);
+                send(s,0x5AA,"START1");
+                send(s,0x5AB,"START2");
+                send(s,0x5AC,"START3");
                 int k=0, j=1;
                 for(int i=0; i<(sendData[0]&255); i++){
-                    send(s, j*256+(sendData[i]&255));
+                    int len=j*256+(sendData[i]&255);
+                    send(s,len,"DATA"+i);
                     if(i%4==3){
                         k++;
-                        send(s,1280+k);
+                        send(s,1280+k,"SYNC"+k);
                     }
                     j++;
                     if(j==5) j=1;
                 }
-            }catch(Exception e){log("EASYLINK_V3_EXCEPTION "+e);}
+                log("V3_SOCKET_CLOSE");
+                s.close();
+            } catch(Exception e) {
+                log("EASYLINK_V3_EXCEPTION "+e);
+            }
         }
-        void send(DatagramSocket s,int len)throws Exception{byte[] d=new byte[Math.min(len,1500)];Arrays.fill(d,(byte)0);s.send(new DatagramPacket(d,d.length,broadcast,UDP_PORT));Thread.sleep(10);}
+        void send(DatagramSocket s,int len,String tag)throws Exception{
+            byte[] d=new byte[Math.min(len,1500)];
+            Arrays.fill(d,(byte)0);
+            DatagramPacket p=new DatagramPacket(d,d.length,broadcast,UDP_PORT);
+            s.send(p);
+            log("V3_UDP_SEND tag="+tag+" len="+d.length+" src="+s.getLocalSocketAddress()+" dst="+broadcast.getHostAddress()+":"+UDP_PORT);
+            Thread.sleep(10);
+        }
         void v2(){
             MulticastSocket m=null;
             try{
