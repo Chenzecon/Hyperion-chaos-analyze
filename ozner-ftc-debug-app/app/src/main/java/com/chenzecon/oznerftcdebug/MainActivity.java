@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.content.Context;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.nsd.NsdManager;
+import android.net.nsd.NsdServiceInfo;
 import android.os.Bundle;
 import android.os.Environment;
 import android.text.InputType;
@@ -30,6 +32,8 @@ public class MainActivity extends Activity {
     private ScrollView scroll;
     private FtcServer server;
     private WifiManager.MulticastLock multicastLock;
+    private NsdManager nsdManager;
+    private final List<NsdManager.DiscoveryListener> mdnsListeners = new ArrayList<NsdManager.DiscoveryListener>();
     private File logFile, lastJson;
 
     @Override public void onCreate(Bundle b) {
