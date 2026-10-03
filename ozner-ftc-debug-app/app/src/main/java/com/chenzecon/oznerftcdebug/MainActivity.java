@@ -361,7 +361,7 @@ public class MainActivity extends Activity {
             int sum=0;for(int j=0;j<i;j++)sum=(sum+(sendData[j]&255))&65535;
             sendData[i++]=(byte)(sum>>>8);sendData[i]=(byte)sum;
         }
-        String describe(){return "wifiIp="+ip(localIp)+" broadcast="+broadcast.getHostAddress()+" ftcIp="+ip(callbackIpValue)+" userInfo="+hex(userInfo)+" v3Len="+(sendData[0]&255)+";}
+        String describe(){return "wifiIp="+ip(localIp)+" broadcast="+broadcast.getHostAddress()+" ftcIp="+ip(callbackIpValue)+" userInfo="+hex(userInfo)+" v3Len="+(sendData[0]&255)+";}"}
         void v3(){
             try {
                 InetAddress localAddress=InetAddress.getByName(ip(localIp));
