@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
     private NsdManager nsdManager;
     private final List<NsdManager.DiscoveryListener> mdnsListeners = new ArrayList<NsdManager.DiscoveryListener>();
     private File logFile, lastJson;
+    private EditText deviceIpField, devicePortField;
     private volatile String discoveredDeviceIp = "";
     private volatile int discoveredMdnsPort = 0;
     private volatile String discoveredDeviceMac = "";
@@ -118,6 +119,8 @@ public class MainActivity extends Activity {
         EditText devicePort = new EditText(this); devicePort.setHint("端口"); devicePort.setSingleLine(true);
         devicePort.setText("8000");
         devicePort.setInputType(InputType.TYPE_CLASS_NUMBER);
+        deviceIpField = deviceIp;
+        devicePortField = devicePort;
         deviceRow1.addView(deviceIp, new LinearLayout.LayoutParams(0,-2,2));
         deviceRow1.addView(devicePort, new LinearLayout.LayoutParams(0,-2,1));
         root.addView(deviceRow1);
@@ -287,8 +290,8 @@ public class MainActivity extends Activity {
                             log("MDNS_RESOLVED type="+type+" name="+si.getServiceName()+" host="+host+" port="+si.getPort()+" mac="+discoveredDeviceMac+" attrs="+attrsText);
                             if (host != null && !"null".equals(host)) {
                                 runOnUiThread(() -> {
-                                    deviceIp.setText(host);
-                                    devicePort.setText("8000");
+                                    if (deviceIpField != null) deviceIpField.setText(host);
+                                    if (devicePortField != null) devicePortField.setText("8000");
                                 });
                                 probeTcpService(type, si.getServiceName(), host, 8000, si.getAttributes());
                                 if (si.getPort() > 0 && si.getPort() != 8000) {
