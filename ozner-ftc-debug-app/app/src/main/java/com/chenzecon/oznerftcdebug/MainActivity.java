@@ -375,60 +375,84 @@ public class MainActivity extends Activity {
             Thread.sleep(10);
         }
         void v2(){
-            MulticastSocket m=null;
             try{
                 String head="239.118.0.0";
-                byte[] syncHBuffer="abcdefghijklmnopqrstuvw".getBytes(StandardCharsets.US_ASCII);
-                byte[] data=new byte[2+ssid.length+key.length];
+                String ip;
+                String syncHString="abcdefghijklmnopqrstuvw";
+                int userlength=userInfo.length;
+
+                byte[] syncHBuffer=syncHString.getBytes(StandardCharsets.US_ASCII);
+                byte[] data=new byte[2];
                 data[0]=(byte)ssid.length;
                 data[1]=(byte)key.length;
-                System.arraycopy(ssid,0,data,2,ssid.length);
-                System.arraycopy(key,0,data,2+ssid.length,key.length);
+                byte[] temp=new byte[ssid.length+key.length];
+                System.arraycopy(ssid,0,temp,0,ssid.length);
+                System.arraycopy(key,0,temp,ssid.length,key.length);
+                byte[] base=new byte[data.length+temp.length];
+                System.arraycopy(data,0,base,0,data.length);
+                System.arraycopy(temp,0,base,data.length,temp.length);
+                data=base;
 
-                m=new MulticastSocket(54064);
-                InetAddress headAddr=InetAddress.getByName(head);
-                m.joinGroup(headAddr);
                 for(int z=0;z<5;z++){
-                    byte[] sync=Arrays.copyOf(syncHBuffer,20);
-                    m.send(new DatagramPacket(sync,20,headAddr,randomPort()));
+                    InetSocketAddress sockAddr=new InetSocketAddress(InetAddress.getByName(head),randomPort());
+                    sendV2Exact(new DatagramPacket(syncHBuffer,20,sockAddr),head,"SYNC"+z);
                     Thread.sleep(10);
                 }
 
-                int userLength=userInfo.length;
-                ByteArrayOutputStream d=new ByteArrayOutputStream();
-                d.write(data);
-                if(data.length%2==0){
-                    if(userInfo.length==0){
-                        d.write((byte)userLength);
-                        d.write(0);
-                        d.write(0);
-                    }else{
-                        d.write((byte)userLength);
-                        d.write(0);
+                if(userlength==0){
+                    for(int k=0;k<data.length;k+=2){
+                        if(k+1<data.length) ip="239.126."+(data[k]&255)+"."+(data[k+1]&255);
+                        else ip="239.126."+(data[k]&255)+".0";
+                        InetSocketAddress sockAddr=new InetSocketAddress(InetAddress.getByName(ip),randomPort());
+                        byte[] bbbb=new byte[k/2+20];
+                        sendV2Exact(new DatagramPacket(bbbb,k/2+20,sockAddr),ip,"DATA"+k);
+                        Thread.sleep(10);
                     }
                 }else{
-                    d.write(0);
-                    d.write((byte)userLength);
-                    d.write(0);
-                }
-                d.write(userInfo);
-                byte[] all=d.toByteArray();
+                    if(data.length%2==0){
+                        if(userInfo.length==0){
+                            byte[] temp_length={(byte)userlength,0,0};
+                            data=concat(data,temp_length);
+                        }else{
+                            byte[] temp_length={(byte)userlength,0};
+                            data=concat(data,temp_length);
+                        }
+                    }else{
+                        byte[] temp_length={0,(byte)userlength,0};
+                        data=concat(data,temp_length);
+                    }
+                    data=concat(data,userInfo);
 
-                for(int k=0;k<all.length;k+=2){
-                    int b0=all[k]&255;
-                    int b1=(k+1<all.length)?(all[k+1]&255):0;
-                    String ip="239.126."+b0+"."+b1;
-                    InetAddress group=InetAddress.getByName(ip);
-                    byte[] payload=new byte[k/2+20];
-                    m.joinGroup(group);
-                    m.send(new DatagramPacket(payload,payload.length,group,randomPort()));
-                    Thread.sleep(10);
+                    for(int k=0;k<data.length;k+=2){
+                        if(k+1<data.length) ip="239.126."+(data[k]&255)+"."+(data[k+1]&255);
+                        else ip="239.126."+(data[k]&255)+".0";
+                        InetSocketAddress sockAddr=new InetSocketAddress(InetAddress.getByName(ip),randomPort());
+                        byte[] bbbb=new byte[k/2+20];
+                        sendV2Exact(new DatagramPacket(bbbb,k/2+20,sockAddr),ip,"DATA"+k);
+                        Thread.sleep(10);
+                    }
                 }
-                log("EASYLINK_V2_SENT bytes="+all.length+" sourcePort=54064");
+                log("EASYLINK_V2_SENT_EXACT bytes="+data.length+" sourcePort=54064");
             }catch(Exception e){
                 log("EASYLINK_V2_EXCEPTION "+e);
+            }
+        }
+        byte[] concat(byte[] a,byte[] b){
+            byte[] r=new byte[a.length+b.length];
+            System.arraycopy(a,0,r,0,a.length);
+            System.arraycopy(b,0,r,a.length,b.length);
+            return r;
+        }
+        void sendV2Exact(DatagramPacket p,String group,String tag)throws Exception{
+            MulticastSocket sock=null;
+            try{
+                sock=new MulticastSocket(54064);
+                InetAddress g=InetAddress.getByName(group);
+                sock.joinGroup(g);
+                sock.send(p);
+                log("V2_UDP_SEND tag="+tag+" srcPort=54064 len="+p.getLength()+" dst="+group+":"+p.getPort());
             }finally{
-                if(m!=null)m.close();
+                if(sock!=null)sock.close();
             }
         }
         int randomPort(){int n=new Random().nextInt(65536);return n<10000?65523:n;}
