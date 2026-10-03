@@ -243,7 +243,11 @@ public class MainActivity extends Activity {
                         }
                         @Override public void onServiceResolved(NsdServiceInfo si){
                             String host=si.getHost()==null?"null":si.getHost().getHostAddress();
-                            log("MDNS_RESOLVED type="+type+" name="+si.getServiceName()+" host="+host+" port="+si.getPort()+" attrs="+si.getAttributes());
+                            String attrsText=decodeMdnsAttributes(si.getAttributes());
+                            log("MDNS_RESOLVED type="+type+" name="+si.getServiceName()+" host="+host+" port="+si.getPort()+" attrs="+attrsText);
+                            if (host != null && !"null".equals(host) && si.getPort() > 0) {
+                                probeTcpService(type, si.getServiceName(), host, si.getPort(), si.getAttributes());
+                            }
                         }
                     });
                 }catch(Throwable t){log("MDNS_RESOLVE_EXCEPTION type="+type+" "+t);}
@@ -258,6 +262,117 @@ public class MainActivity extends Activity {
         };
         mdnsListeners.add(listener);
         nsdManager.discoverServices(type,NsdManager.PROTOCOL_DNS_SD,listener);
+    }
+
+    private String decodeMdnsAttributes(Map<String, byte[]> attrs) {
+        if (attrs == null || attrs.isEmpty()) return "{}";
+        StringBuilder out = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, byte[]> e : attrs.entrySet()) {
+            if (!first) out.append(", ");
+            first = false;
+            byte[] b = e.getValue();
+            String ascii = printableAscii(b);
+            String utf8;
+            try { utf8 = new String(b, StandardCharsets.UTF_8); } catch (Throwable t) { utf8 = ""; }
+            out.append(e.getKey()).append("={hex=").append(hex(b))
+               .append(", ascii=").append(ascii)
+               .append(", utf8=").append(escapeOneLine(utf8)).append("}");
+        }
+        out.append("}");
+        return out.toString();
+    }
+
+    private String printableAscii(byte[] b) {
+        if (b == null) return "";
+        StringBuilder s = new StringBuilder();
+        for (byte x : b) {
+            int c = x & 255;
+            s.append(c >= 32 && c <= 126 ? (char)c : '.');
+        }
+        return s.toString();
+    }
+
+    private String escapeOneLine(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\r", "\\\\r").replace("\n", "\\\\n");
+    }
+
+    private void probeTcpService(String type, String serviceName, String host, int port, Map<String, byte[]> attrs) {
+        executor.execute(() -> {
+            Socket socket = new Socket();
+            File rawFile = new File(logFile.getParentFile(),
+                    "tcp_" + host.replace('.', '_') + "_" + port + "_" + System.currentTimeMillis() + ".bin");
+            try {
+                log("TCP_PROBE_START type=" + type + " name=" + serviceName + " dst=" + host + ":" + port);
+                socket.setReuseAddress(true);
+                socket.connect(new InetSocketAddress(host, port), 3000);
+                socket.setSoTimeout(1800);
+                log("TCP_CONNECTED dst=" + host + ":" + port + " local=" + socket.getLocalSocketAddress());
+
+                InputStream in = new BufferedInputStream(socket.getInputStream());
+                ByteArrayOutputStream pre = new ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+
+                try {
+                    int n = in.read(buf);
+                    if (n > 0) {
+                        pre.write(buf, 0, n);
+                        log("TCP_PRE_READ bytes=" + n + " hex=" + hex(buf, n) + " text=" + oneLine(new String(buf, 0, n, StandardCharsets.UTF_8)));
+                    }
+                } catch (SocketTimeoutException e) {
+                    log("TCP_PRE_READ_TIMEOUT");
+                }
+
+                String req = "GET / HTTP/1.1\\r\\nHost: " + host + ":" + port
+                        + "\\r\\nConnection: close\\r\\nUser-Agent: OznerFTC-Debug/1.1\\r\\n\\r\\n";
+                OutputStream out = socket.getOutputStream();
+                out.write(req.getBytes(StandardCharsets.US_ASCII));
+                out.flush();
+                log("TCP_HTTP_GET_SENT dst=" + host + ":" + port + " bytes=" + req.length());
+
+                ByteArrayOutputStream all = new ByteArrayOutputStream();
+                if (pre.size() > 0) all.write(pre.toByteArray());
+
+                socket.setSoTimeout(2500);
+                long deadline = System.currentTimeMillis() + 5000;
+                while (System.currentTimeMillis() < deadline && all.size() < 65536) {
+                    try {
+                        int n = in.read(buf);
+                        if (n < 0) break;
+                        if (n == 0) continue;
+                        all.write(buf, 0, n);
+                        log("TCP_READ_CHUNK bytes=" + n + " total=" + all.size());
+                    } catch (SocketTimeoutException e) {
+                        break;
+                    }
+                }
+
+                byte[] result = all.toByteArray();
+                writeFile(rawFile, result);
+                log("TCP_RAW_SAVED path=" + rawFile.getName() + " bytes=" + result.length);
+                if (result.length > 0) {
+                    int show = Math.min(result.length, 8192);
+                    log("TCP_RAW_HEX bytes=" + result.length + " hex=" + hex(result, show));
+                    log("TCP_RAW_TEXT text=" + oneLine(new String(result, 0, show, StandardCharsets.UTF_8)));
+                } else {
+                    log("TCP_NO_RESPONSE");
+                }
+                log("TCP_PROBE_DONE dst=" + host + ":" + port);
+            } catch (Throwable t) {
+                log("TCP_PROBE_EXCEPTION dst=" + host + ":" + port + " " + t);
+            } finally {
+                try { socket.close(); } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    private static String hex(byte[] b, int len) {
+        if (b == null) return "";
+        int n = Math.min(len, b.length);
+        StringBuilder s = new StringBuilder(n * 2);
+        for (int i = 0; i < n; i++) s.append(String.format(Locale.US, "%02X", b[i] & 255));
+        return s.toString();
     }
 
     private void stopMdnsScan() {
