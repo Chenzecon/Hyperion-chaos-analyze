@@ -702,19 +702,20 @@ public class MainActivity extends Activity {
             int total=3+ssid.length+key.length+userInfo.length+2;
             if(total>127) throw new IOException("EasyLink payload too large: "+total);
             sendData=new byte[128]; sendData[0]=(byte)total;
-            int i=1; System.arraycopy(ssid,0,sendData,i,ssid.length);i+=ssid.length;
+            int i=1;
+            sendData[i++]=(byte)ssid.length;
+            sendData[i++]=(byte)key.length;
+            System.arraycopy(ssid,0,sendData,i,ssid.length);i+=ssid.length;
             System.arraycopy(key,0,sendData,i,key.length);i+=key.length;
             System.arraycopy(userInfo,0,sendData,i,userInfo.length);i+=userInfo.length;
             int sum=0;for(int j=0;j<i;j++)sum=(sum+(sendData[j]&255))&65535;
             sendData[i++]=(byte)(sum>>>8);sendData[i]=(byte)sum;
         }
-        String describe(){return "wifiIp="+ip(localIp)+" broadcast="+broadcast.getHostAddress()+" ftcIp="+ip(callbackIpValue)+" userInfo="+hex(userInfo)+" v3Len="+(sendData[0]&255);}
+        String describe(){return "wifiIp="+ip(localIp)+" broadcast="+broadcast.getHostAddress()+" ftcIp="+ip(callbackIpValue)
+                +" ssidLen="+ssid.length+" keyLen="+key.length+" userInfo="+hex(userInfo)+" v3Len="+(sendData[0]&255);}
         void v3(){
             try {
-                InetAddress localAddress=InetAddress.getByName(ip(localIp));
-                DatagramSocket s=new DatagramSocket(null);
-                s.setReuseAddress(true);
-                s.bind(new InetSocketAddress(localAddress,0));
+                DatagramSocket s=new DatagramSocket();
                 s.setBroadcast(true);
                 log("V3_SOCKET local="+s.getLocalSocketAddress()+" dst="+broadcast.getHostAddress()+":"+UDP_PORT);
                 send(s,0x5AA,"START1");
@@ -738,7 +739,7 @@ public class MainActivity extends Activity {
             }
         }
         void send(DatagramSocket s,int len,String tag)throws Exception{
-            byte[] d=new byte[Math.min(len,1500)];
+            byte[] d=new byte[1500];
             Arrays.fill(d,(byte)0);
             DatagramPacket p=new DatagramPacket(d,d.length,broadcast,UDP_PORT);
             s.send(p);
