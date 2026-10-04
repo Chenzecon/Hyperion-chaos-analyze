@@ -741,9 +741,9 @@ public class MainActivity extends Activity {
         void send(DatagramSocket s,int len,String tag)throws Exception{
             byte[] d=new byte[1500];
             Arrays.fill(d,(byte)0);
-            DatagramPacket p=new DatagramPacket(d,d.length,broadcast,UDP_PORT);
+            DatagramPacket p=new DatagramPacket(d,len,broadcast,UDP_PORT);
             s.send(p);
-            log("V3_UDP_SEND tag="+tag+" len="+d.length+" src="+s.getLocalSocketAddress()+" dst="+broadcast.getHostAddress()+":"+UDP_PORT);
+            log("V3_UDP_SEND tag="+tag+" len="+p.getLength()+" src="+s.getLocalSocketAddress()+" dst="+broadcast.getHostAddress()+":"+UDP_PORT);
             Thread.sleep(10);
         }
         void v2(){
